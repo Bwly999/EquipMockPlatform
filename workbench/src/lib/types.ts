@@ -138,6 +138,12 @@ export interface ValidationIssue {
   column?: number
 }
 
+export interface ValidationResult {
+  ok: boolean
+  errors: ValidationIssue[]
+  warnings: ValidationIssue[]
+}
+
 export interface WriteResult {
   ok: boolean
   errors: ValidationIssue[]

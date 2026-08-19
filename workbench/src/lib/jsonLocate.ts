@@ -20,140 +20,167 @@ export function offsetToPos(text: string, offset: number): Pos {
   return { line, column: offset - lastLineStart + 1 }
 }
 
-/** V8 JSON.parse 错误 → 行列；无法提取时返回 undefined */
+/** V8 JSON.parse 错误 → 行列；无法提取时用自有扫描器兜底定位 */
 export function parseErrorPosition(text: string, err: unknown): Pos | undefined {
   const message = err instanceof Error ? err.message : String(err)
   const m = /position (\d+)/.exec(message)
   if (m) return offsetToPos(text, Number(m[1]))
+  // Node/V8 新版错误消息不带 position：用自有扫描器兜底定位
+  const offset = scanErrorOffset(text)
+  if (offset !== null) return offsetToPos(text, offset)
   return undefined
 }
 
 /**
  * 建立归一化路径 → 值/键起始位置 的索引。
  * 路径形式与 ValidationIssue.path 一致：mocks[0].rules[1].argsPattern[0]。
- * 仅对合法 JSON 建立（调用前先成功 parse）。
+ * 仅对合法 JSON 建立（调用前先成功 parse）；非法文本抛含 offset 的错误。
  */
 export function indexJsonPositions(text: string): Map<string, Pos> {
-  const map = new Map<string, Pos>()
-  let i = 0
-  const len = text.length
+  const parser = new JsonIndexParser(text)
+  return parser.run()
+}
 
-  const skipWs = () => {
-    while (i < len && /\s/.test(text[i]!)) i++
+/** 扫描非法 JSON，返回第一个出错字符的 offset（供 parse 错误定位兜底）；合法返回 null */
+export function scanErrorOffset(text: string): number | null {
+  const parser = new JsonIndexParser(text)
+  try {
+    parser.run()
+    return null
+  } catch (e) {
+    const m = /at (\d+)/.exec(e instanceof Error ? e.message : String(e))
+    return m ? Number(m[1]) : null
   }
-  const record = (path: string, pos: Pos) => {
-    if (!map.has(path)) map.set(path, pos)
+}
+
+class JsonIndexParser {
+  private readonly map = new Map<string, Pos>()
+  private i = 0
+  constructor(private readonly text: string) {}
+
+  run(): Map<string, Pos> {
+    this.parseValue('')
+    return this.map
   }
 
-  const parseValue = (path: string): unknown => {
-    skipWs()
-    const start = i
-    const ch = text[i]
+  private fail(message: string): never {
+    throw new Error(`${message} at ${this.i}`)
+  }
+
+  private skipWs(): void {
+    while (this.i < this.text.length && /\s/.test(this.text[this.i]!)) this.i++
+  }
+
+  private record(path: string, pos: Pos): void {
+    if (!this.map.has(path)) this.map.set(path, pos)
+  }
+
+  private parseValue(path: string): unknown {
+    this.skipWs()
+    const start = this.i
+    const ch = this.text[this.i]
+    if (ch === undefined) this.fail('unexpected end of input')
     if (ch === '{') {
-      record(path, offsetToPos(text, start))
-      i++
+      this.record(path, offsetToPos(this.text, start))
+      this.i++
       const obj: Record<string, unknown> = {}
-      skipWs()
-      if (text[i] === '}') {
-        i++
+      this.skipWs()
+      if (this.text[this.i] === '}') {
+        this.i++
         return obj
       }
       while (true) {
-        skipWs()
-        const keyStart = i
-        if (text[i] !== '"') throw new Error('expect object key')
-        const key = parseString()
+        this.skipWs()
+        const keyStart = this.i
+        if (this.text[this.i] !== '"') this.fail('expect object key')
+        const key = this.parseString()
         const keyPath = path ? `${path}.${key}` : key
-        record(keyPath, offsetToPos(text, keyStart))
-        skipWs()
-        if (text[i] !== ':') throw new Error('expect :')
-        i++
-        obj[key] = parseValue(keyPath)
-        skipWs()
-        if (text[i] === ',') {
-          i++
+        this.record(keyPath, offsetToPos(this.text, keyStart))
+        this.skipWs()
+        if (this.text[this.i] !== ':') this.fail('expect :')
+        this.i++
+        obj[key] = this.parseValue(keyPath)
+        this.skipWs()
+        if (this.text[this.i] === ',') {
+          this.i++
           continue
         }
-        if (text[i] === '}') {
-          i++
+        if (this.text[this.i] === '}') {
+          this.i++
           return obj
         }
-        throw new Error('expect , or }')
+        this.fail('expect , or }')
       }
     }
     if (ch === '[') {
-      record(path, offsetToPos(text, start))
-      i++
+      this.record(path, offsetToPos(this.text, start))
+      this.i++
       const arr: unknown[] = []
-      skipWs()
-      if (text[i] === ']') {
-        i++
+      this.skipWs()
+      if (this.text[this.i] === ']') {
+        this.i++
         return arr
       }
       let idx = 0
       while (true) {
-        arr.push(parseValue(`${path}[${idx}]`))
+        arr.push(this.parseValue(`${path}[${idx}]`))
         idx++
-        skipWs()
-        if (text[i] === ',') {
-          i++
+        this.skipWs()
+        if (this.text[this.i] === ',') {
+          this.i++
           continue
         }
-        if (text[i] === ']') {
-          i++
+        if (this.text[this.i] === ']') {
+          this.i++
           return arr
         }
-        throw new Error('expect , or ]')
+        this.fail('expect , or ]')
       }
     }
     if (ch === '"') {
-      record(path, offsetToPos(text, start))
-      return parseString()
+      this.record(path, offsetToPos(this.text, start))
+      return this.parseString()
     }
     // number / true / false / null
-    const m = /^(true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(text.slice(i))
-    if (!m) throw new Error(`unexpected token at ${i}`)
-    record(path, offsetToPos(text, start))
-    i += m[1].length
+    const m = /^(true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(this.text.slice(this.i))
+    if (!m) this.fail(`unexpected token '${this.text[this.i]}'`)
+    this.record(path, offsetToPos(this.text, start))
+    this.i += m[1]!.length
     if (m[1] === 'true') return true
     if (m[1] === 'false') return false
     if (m[1] === 'null') return null
     return Number(m[1])
   }
 
-  const parseString = (): string => {
+  private parseString(): string {
     // text[i] === '"'
-    i++
+    this.i++
     let out = ''
-    while (i < len) {
-      const c = text[i]!
+    while (this.i < this.text.length) {
+      const c = this.text[this.i]!
       if (c === '"') {
-        i++
+        this.i++
         return out
       }
       if (c === '\\') {
-        const n = text[i + 1]
+        const n = this.text[this.i + 1]
+        if (n === undefined) this.fail('unterminated string')
         if (n === 'u') {
-          out += String.fromCharCode(parseInt(text.slice(i + 2, i + 6), 16))
-          i += 6
+          const hex = this.text.slice(this.i + 2, this.i + 6)
+          if (!/^[0-9a-fA-F]{4}$/.test(hex)) this.fail('bad unicode escape')
+          out += String.fromCharCode(parseInt(hex, 16))
+          this.i += 6
           continue
         }
         out += n === 'n' ? '\n' : n === 't' ? '\t' : n === 'r' ? '\r' : n!
-        i += 2
+        this.i += 2
         continue
       }
       out += c
-      i++
+      this.i++
     }
-    throw new Error('unterminated string')
+    this.fail('unterminated string')
   }
-
-  try {
-    parseValue('')
-  } catch {
-    // 非法 JSON：返回已建立的部分索引
-  }
-  return map
 }
 
 /** 把 ajv 的 instancePath（/mocks/0/rules）归一化为 mocks[0].rules */

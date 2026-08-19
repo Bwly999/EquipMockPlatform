@@ -152,7 +152,6 @@ function checkArgValue(value: unknown, path: string, errors: ValidationIssue[]):
 export interface TextValidationResult extends ValidationResult {
   doc: SubGroupDoc | null
 }
-
 /** Monaco 文本模式入口：parse → 定位 → Schema → 语义 */
 export function validateSubGroupText(text: string): TextValidationResult {
   let doc: unknown

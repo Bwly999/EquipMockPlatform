@@ -2,11 +2,18 @@
 /** 规则编辑器组件测试（Testing Library）：正则即时校验 / 参数行类型推断 / action 三态 */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
 import { ActionEditor } from '../../src/components/ActionEditor'
 import { ArgsEditor } from '../../src/components/ArgsEditor'
 import { PatternEditor } from '../../src/components/PatternEditor'
 
 afterEach(cleanup)
+
+/** 受控包装：让 onChange 驱动重渲染（模拟真实表单流） */
+function ArgsHarness({ initial }: { initial: unknown[] }) {
+  const [args, setArgs] = useState(initial)
+  return <ArgsEditor args={args} onChange={setArgs} />
+}
 
 describe('PatternEditor', () => {
   it('非法正则标红并显示错误信息', () => {
@@ -48,7 +55,8 @@ describe('ArgsEditor', () => {
     expect(screen.getByDisplayValue('CH1')).toBeTruthy()
     const bool = screen.getByDisplayValue('true') as HTMLSelectElement
     expect(bool.tagName).toBe('SELECT')
-    expect(screen.getByText('null')).toBeTruthy()
+    // null 值展示（多个 select 的 option 里也有 "null" 文本）
+    expect(screen.getAllByText('null').length).toBeGreaterThanOrEqual(4)
   })
 
   it('修改数字参数回调', () => {
@@ -65,13 +73,12 @@ describe('ArgsEditor', () => {
     expect(onChange).toHaveBeenCalledWith([null])
   })
 
-  it('$hex 控件：输入奇数 hex 显示错误提示', () => {
-    const onChange = vi.fn()
-    render(<ArgsEditor args={[{ $hex: 'A1B2' }]} onChange={onChange} />)
+  it('$hex 控件：奇数长度 hex 标红（值仍提交，保存期由校验器拦截）', () => {
+    render(<ArgsHarness initial={[{ $hex: 'A1B2' }]} />)
     const input = screen.getByDisplayValue('A1B2')
-    fireEvent.change(input, { target: { value: 'ABC' } })
-    // 输入被规范为偶数失败 → 显示错误文案（值 'ABC' 不合法，onChange 不回调非法值）
-    expect(onChange).not.toHaveBeenCalled()
+    fireEvent.change(input, { target: { value: 'A1B3C' } })
+    expect(screen.getByDisplayValue('A1B3C').className).toContain('input-invalid')
+    expect(screen.getByText(/偶数长度/)).toBeTruthy()
   })
 })
 

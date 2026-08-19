@@ -18,7 +18,7 @@ import * as path from 'node:path'
 const ROOTS = ['dist', 'dist-electron']
 const ALLOWED_URL_RE =
   /^https?:\/\/(json-schema\.org|www\.json-schema\.org|schemastore\.org|www\.w3\.org|microsoft\.github\.io|code\.visualstudio\.com|vscode\.dev|electronjs\.org|nodejs\.org|www\.oracle\.com|docs\.oracle\.com|tools\.ietf\.org|tc39\.es|developer\.mozilla\.org)/i
-const CDN_HOST_RE = /(unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|esm\.sh|skypack\.dev|bootcdn\.net|ajax\.googleapis\.com|fonts\.googleapis\.com)/i
+const CDN_HOST_RE = /(unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|esm\.sh|skypack\.dev|bootcdn\.net|ajax\.googleapis\.com|fonts\.googleapis\.com)/gi
 
 const exts = new Set(['.html', '.js', '.mjs', '.cjs', '.css'])
 const violations = []

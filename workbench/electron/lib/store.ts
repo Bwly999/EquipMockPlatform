@@ -90,8 +90,7 @@ function listSubGroupFiles(dir: string): string[] {
     .sort((a, b) => a.localeCompare(b, 'en'))
 }
 
-export function listGroups(home: string): GroupInfo[] {
-  mustHome(home)
+export function listGroups(home: string): GroupInfo[] {  mustHome(home)
   const groupsDir = homePaths(home).groupsDir
   if (!fs.existsSync(groupsDir)) return []
   return fs
@@ -117,6 +116,14 @@ export function listGroups(home: string): GroupInfo[] {
       })
       return { name, subGroups }
     })
+}
+
+/** 列出某组下的小分组文件名（供测试/校验用） */
+export function listSubGroupNames(home: string, group: string): string[] {
+  mustHome(home)
+  const dir = groupDir(home, group)
+  if (!fs.existsSync(dir)) return []
+  return listSubGroupFiles(dir)
 }
 
 export function createGroup(home: string, name: string): void {
@@ -238,33 +245,68 @@ export async function writeRegistry(home: string, doc: PluginRegistryDoc): Promi
 }
 
 export function readState(home: string): StateDoc | null {
+  return readStateTolerant(home).doc
+}
+
+/** agent 对 state.json 走原子写，但读取端仍可能撞上替换间隙：解析失败时 parseFailed=true，由调用方沿用上次快照 */
+export function readStateTolerant(home: string): { doc: StateDoc | null; parseFailed: boolean } {
   mustHome(home)
   try {
-    return (readJsonIfExists(homePaths(home).state) as StateDoc | undefined) ?? null
+    const raw = readJsonIfExists(homePaths(home).state)
+    return { doc: (raw as StateDoc | undefined) ?? null, parseFailed: false }
   } catch {
-    return null
+    return { doc: null, parseFailed: true }
   }
 }
 
+/**
+ * agent 日志为 JUL FileHandler 滚动文件（logs/agent.log.0 … agent.log.4，也可能有 agent.log）。
+ * 合并全部 agent.log* 后取尾部 lines 行；按 mtime 排序拼接（轮转回卷时 mtime 仍单调可靠）。
+ */
 export function readLogTail(home: string, lines = 200): string[] {
   mustHome(home)
-  const logPath = homePaths(home).agentLog
+  const logsDir = homePaths(home).logsDir
   try {
-    const stat = fs.statSync(logPath)
-    // 只读最后 512KB，避免日志膨胀拖慢 UI
-    const readFrom = Math.max(0, stat.size - 512 * 1024)
-    const fd = fs.openSync(logPath, 'r')
-    try {
-      const length = stat.size - readFrom
-      const buf = Buffer.alloc(length)
-      fs.readSync(fd, buf, 0, length, readFrom)
-      const text = buf.toString('utf8')
-      const all = text.split(/\r?\n/)
-      const tail = all.slice(-lines - 1, all.at(-1) === '' ? -1 : undefined)
-      return tail.slice(-lines)
-    } finally {
-      fs.closeSync(fd)
+    const names = fs
+      .readdirSync(logsDir)
+      .filter((n) => /^agent\.log(\.\d+)?$/.test(n) && !n.includes('.tmp') && !n.includes('.bak'))
+    if (names.length === 0) return []
+    const withStat = names
+      .map((name) => {
+        const abs = path.join(logsDir, name)
+        try {
+          return { name, abs, mtime: fs.statSync(abs).mtimeMs, size: fs.statSync(abs).size }
+        } catch {
+          return null
+        }
+      })
+      .filter((x): x is { name: string; abs: string; mtime: number; size: number } => x !== null)
+      .sort((a, b) => a.mtime - b.mtime)
+    if (withStat.length === 0) return []
+
+    // 每个文件只读最后 256KB，整体再截尾
+    const chunks: string[] = []
+    for (const f of withStat) {
+      const readFrom = Math.max(0, f.size - 256 * 1024)
+      const fd = fs.openSync(f.abs, 'r')
+      try {
+        const length = f.size - readFrom
+        const buf = Buffer.alloc(length)
+        fs.readSync(fd, buf, 0, length, readFrom)
+        let text = buf.toString('utf8')
+        if (readFrom > 0) {
+          // 从半行开始读时丢弃第一个残行
+          const nl = text.indexOf('\n')
+          if (nl !== -1) text = text.slice(nl + 1)
+        }
+        chunks.push(text)
+      } finally {
+        fs.closeSync(fd)
+      }
     }
+    const all = chunks.join('').split(/\r?\n/)
+    const tail = all.at(-1) === '' ? all.slice(0, -1) : all
+    return tail.slice(-lines)
   } catch {
     return []
   }

@@ -116,7 +116,7 @@ export function StatusPage() {
 
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
           <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
-            <span className="text-xs font-semibold text-slate-500">logs/agent.log 尾部 {logTail.length} 行</span>
+            <span className="text-xs font-semibold text-slate-500">logs/agent.log*（滚动）尾部 {logTail.length} 行</span>
             <label className="ml-auto flex items-center gap-1.5 text-xs text-slate-500">
               <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />
               自动滚动

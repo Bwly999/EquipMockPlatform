@@ -11,7 +11,7 @@ export default defineConfig({
       fileName: () => 'preload.cjs',
     },
     rollupOptions: {
-      external: ['electron'],
+      external: ['electron', /^node:/],
     },
     target: 'node22',
     minify: false,

@@ -54,24 +54,24 @@ describe('validateSubGroupDoc 反例（Schema 层）', () => {
     },
     {
       name: 'mock 缺 method',
-      mutate: (d) => delete (d.mocks[0] as Record<string, unknown>).method,
+      mutate: (d) => delete (d.mocks[0] as unknown as Record<string, unknown>).method,
       path: 'mocks[0]',
     },
     {
       name: 'FULL_MATCH 缺 args',
-      mutate: (d) => delete (d.mocks[0]!.rules[0] as Record<string, unknown>).args,
+      mutate: (d) => delete (d.mocks[0]!.rules[0] as unknown as Record<string, unknown>).args,
       path: 'mocks[0].rules[0]',
     },
     {
       name: 'PATTERN_MATCH 缺 argsPattern',
-      mutate: (d) => delete (d.mocks[0]!.rules[1] as Record<string, unknown>).argsPattern,
+      mutate: (d) => delete (d.mocks[0]!.rules[1] as unknown as Record<string, unknown>).argsPattern,
       path: 'mocks[0].rules[1]',
     },
     {
       name: 'VALUE 缺 value',
       mutate: (d) => {
-        ;(d.mocks[0]!.rules[0]!.action as Record<string, unknown>).type = 'VALUE'
-        delete (d.mocks[0]!.rules[0]!.action as Record<string, unknown>).value
+        ;(d.mocks[0]!.rules[0]!.action as unknown as Record<string, unknown>).type = 'VALUE'
+        delete (d.mocks[0]!.rules[0]!.action as unknown as Record<string, unknown>).value
       },
       path: 'mocks[0].rules[0].action',
     },
@@ -85,14 +85,14 @@ describe('validateSubGroupDoc 反例（Schema 层）', () => {
     {
       name: 'matchType 非法值',
       mutate: (d) => {
-        ;(d.mocks[0]!.rules[0] as Record<string, unknown>).matchType = 'REGEX_MATCH'
+        ;(d.mocks[0]!.rules[0] as unknown as Record<string, unknown>).matchType = 'REGEX_MATCH'
       },
       path: 'mocks[0].rules[0]',
     },
     {
       name: '多余字段',
       mutate: (d) => {
-        ;(d as Record<string, unknown>).extra = 1
+        ;(d as unknown as Record<string, unknown>).extra = 1
       },
       path: '',
     },
@@ -106,7 +106,7 @@ describe('validateSubGroupDoc 反例（Schema 层）', () => {
     {
       name: 'enabled 非布尔',
       mutate: (d) => {
-        ;(d.mocks[0] as Record<string, unknown>).enabled = 'yes'
+        ;(d.mocks[0] as unknown as Record<string, unknown>).enabled = 'yes'
       },
       path: 'mocks[0]',
     },

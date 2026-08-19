@@ -4,8 +4,8 @@
  * agentAlive = lastWriteAt 在 3s 内更新过 且 pid 存活（主进程探测）。
  */
 import * as fs from 'node:fs'
-import type { StateSnapshot } from '../../src/lib/types'
-import { readLogTail, readState } from './store'
+import type { StateDoc, StateSnapshot } from '../../src/lib/types'
+import { readLogTail, readStateTolerant } from './store'
 
 const HEARTBEAT_MS = 3000
 
@@ -21,7 +21,7 @@ export function isPidAlive(pid: number | undefined | null): boolean {
   }
 }
 
-export function computeAgentAlive(state: ReturnType<typeof readState>, now = Date.now()): boolean {
+export function computeAgentAlive(state: StateDoc | null, now = Date.now()): boolean {
   if (!state?.lastWriteAt) return false
   const t = Date.parse(state.lastWriteAt)
   if (Number.isNaN(t)) return false
@@ -29,8 +29,13 @@ export function computeAgentAlive(state: ReturnType<typeof readState>, now = Dat
   return isPidAlive(state.pid)
 }
 
-export function buildSnapshot(home: string): StateSnapshot {
-  const state = readState(home)
+/**
+ * 组装快照。state.json 解析失败（原子写替换间隙读到半截）时沿用 lastGoodState，
+ * 避免 UI 闪断（编排方与 Java M1 侧对齐的读取容错）。
+ */
+export function buildSnapshot(home: string, lastGoodState: StateDoc | null = null): StateSnapshot {
+  const { doc, parseFailed } = readStateTolerant(home)
+  const state = parseFailed ? lastGoodState : doc
   const logTail = readLogTail(home, 200)
   return {
     state,
@@ -46,6 +51,7 @@ export class StateWatcher {
   private pollTimer: NodeJS.Timeout | null = null
   private debounceTimer: NodeJS.Timeout | null = null
   private lastSignature = ''
+  private lastGoodState: StateDoc | null = null
   private home: string | null = null
   private onSnapshot: (snapshot: StateSnapshot) => void
 
@@ -57,13 +63,14 @@ export class StateWatcher {
     this.stop()
     this.home = home
     this.lastSignature = ''
+    this.lastGoodState = null
     this.maybeEmit()
 
-    // fs.watch：Windows 支持递归监听根目录（state.json 在根、agent.log 在 logs/）
+    // fs.watch：Windows 支持递归监听根目录（state.json 在根、agent 日志在 logs/）
     try {
       this.watcher = fs.watch(home, { recursive: true }, (_event, filename) => {
         const name = String(filename ?? '')
-        if (!/^(state\.json|logs[/\\]agent\.log|logs[/\\])/.test(name) && name !== 'state.json') return
+        if (!/^(state\.json|logs[/\\]agent\.log(\.\d+)*|logs[/\\])/.test(name)) return
         this.scheduleEmit(300)
       })
       this.watcher.on('error', () => {
@@ -97,7 +104,8 @@ export class StateWatcher {
   private maybeEmit(): void {
     if (!this.home) return
     try {
-      const snapshot = buildSnapshot(this.home)
+      const snapshot = buildSnapshot(this.home, this.lastGoodState)
+      if (snapshot.state) this.lastGoodState = snapshot.state
       const signature = JSON.stringify(snapshot.state) + '|' + snapshot.logTail.length + '|' + snapshot.logTail.at(-1) + '|' + snapshot.agentAlive + '|' + snapshot.pidAlive
       if (signature !== this.lastSignature) {
         this.lastSignature = signature

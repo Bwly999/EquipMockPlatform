@@ -6,12 +6,9 @@ import * as path from 'node:path'
 const root = path.resolve(import.meta.dirname, '..')
 rmSync(path.join(root, 'dist-electron'), { recursive: true, force: true })
 
+const viteJs = path.join(root, 'node_modules', 'vite', 'bin', 'vite.js')
 for (const config of ['vite.config.main.ts', 'vite.config.preload.ts']) {
-  const r = spawnSync(
-    process.platform === 'win32' ? path.join(root, 'node_modules/.bin/vite.cmd') : path.join(root, 'node_modules/.bin/vite'),
-    ['build', '--config', config],
-    { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' },
-  )
+  const r = spawnSync(process.execPath, [viteJs, 'build', '--config', config], { cwd: root, stdio: 'inherit' })
   if (r.status !== 0) {
     console.error(`构建失败：${config}`)
     process.exit(r.status ?? 1)

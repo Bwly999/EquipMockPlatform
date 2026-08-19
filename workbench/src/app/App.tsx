@@ -17,13 +17,15 @@ export function App() {
   const page = useUiStore((s) => s.page)
 
   useEffect(() => {
+    // 冒烟/日志观测点：渲染层挂载成功
+    console.info('[workbench] renderer ready')
     void init()
   }, [init])
 
   return (
     <div className="flex h-full flex-col">
       <TopBar />
-      {ready && !homePath ? (
+      {!ready ? null : !homePath ? (
         <EmptyHome onOpen={selectAndSet} onInit={initSkeletonHere} />
       ) : (
         <div className="flex min-h-0 flex-1">

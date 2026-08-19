@@ -231,11 +231,11 @@ export class WorkbenchIpc {
     ipcMain.handle('state:get', () => wrap(() => buildSnapshot(this.mustHome())))
 
     ipcMain.handle('state:subscribe', () =>
-      wrap(() => {
+      wrap(async () => {
         // 订阅即确保 watcher 在跑（home 已设置时）
         if (this.home) this.watcher.start(this.home)
         return buildSnapshot(this.mustHome())
-      }) as Promise<StateSnapshot>,
+      }),
     )
   }
 
