@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.equipmock</groupId>
+    <artifactId>equipmock-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>equipmock-plugin-api</artifactId>
+  <name>EquipMock Plugin API (插件作者公共 API，随 agent.jar 提供)</name>
+
+  <dependencies>
+    <!-- ExtensionPoint 注解来自 PF4J，运行时由 agent jar 提供（relocate 不影响注解留存？
+       注意：pf4j 在 agent 内 relocate 后，插件 provided 依赖的是原包名 org.pf4j.ExtensionPoint，
+       与 relocate 后的类不同名 —— 因此 PF4J 不 relocate，仅 shade 合并（见 02 §7 风险预案）。 -->
+    <dependency>
+      <groupId>org.pf4j</groupId>
+      <artifactId>pf4j</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+    </dependency>
+  </dependencies>
+</project>

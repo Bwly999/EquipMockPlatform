@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.equipmock</groupId>
+    <artifactId>equipmock-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>equipmock-agent</artifactId>
+  <name>EquipMock Agent (premain 入口，shade 打包)</name>
+
+  <dependencies>
+    <!-- bootstrap 契约类运行期由 equip-mock-bootstrap.jar（Boot-Class-Path）提供，不打入本 jar -->
+    <dependency>
+      <groupId>com.equipmock</groupId>
+      <artifactId>equipmock-bootstrap</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <!-- plugin-api 必须随 agent jar 分发（不 relocate），供插件/宿主路由使用 -->
+    <dependency>
+      <groupId>com.equipmock</groupId>
+      <artifactId>equipmock-plugin-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>net.bytebuddy</groupId>
+      <artifactId>byte-buddy</artifactId>
+    </dependency>
+    <!-- pf4j：shade 合并但不 relocate（02 §7：扩展点契约需与插件编译期同包名） -->
+    <dependency>
+      <groupId>org.pf4j</groupId>
+      <artifactId>pf4j</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>equip-mock-agent</finalName>
+  </build>
+</project>

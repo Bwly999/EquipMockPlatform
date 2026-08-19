@@ -1,0 +1,21 @@
+# Java
+target/
+*.class
+*.jar.tmp
+# Node / Electron
+node_modules/
+dist/
+out/
+build/
+release/
+*.log
+# IDE
+.idea/
+*.iml
+.vscode/
+# OS
+Thumbs.db
+.DS_Store
+# EquipMock runtime home（本地联调产物，不入库）
+/equip-mock/
+**/equipmock-test-home/
