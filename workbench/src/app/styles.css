@@ -1,0 +1,90 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #dbe6fe;
+  --color-brand-200: #bfd3fe;
+  --color-brand-300: #93b4fd;
+  --color-brand-400: #6090fa;
+  --color-brand-500: #3b6ef6;
+  --color-brand-600: #2553eb;
+  --color-brand-700: #1d40d8;
+  --color-brand-800: #1e39af;
+  --color-brand-900: #1e368a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    'Segoe UI',
+    'Microsoft YaHei',
+    'PingFang SC',
+    system-ui,
+    sans-serif;
+  background: #f4f5f7;
+  color: #1f2328;
+  overflow: hidden;
+}
+
+/* 细滚动条 */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c8ccd4;
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #a8adb8;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 输入基线 */
+.input {
+  @apply w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none transition-colors;
+}
+.input:focus {
+  @apply border-brand-500 ring-2 ring-brand-100;
+}
+.input-invalid {
+  @apply border-red-500 ring-2 ring-red-100;
+}
+.label {
+  @apply mb-1 block text-xs font-medium text-slate-500;
+}
+
+/* Monaco 容器 */
+.monaco-host {
+  height: 100%;
+  min-height: 0;
+}
+
+/* 拖动排序中的行 */
+.drag-over-top {
+  box-shadow: inset 0 3px 0 0 var(--color-brand-500);
+}
+.dragging {
+  opacity: 0.45;
+}
+
+/* 错误定位闪烁 */
+@keyframes flash-ring {
+  0% {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0);
+  }
+}
+.flash-locate {
+  animation: flash-ring 1.6s ease-out 2;
+}

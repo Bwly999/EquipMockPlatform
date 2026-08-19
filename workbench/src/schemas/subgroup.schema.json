@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "equipmock/subgroup@1",
+  "title": "EquipMock 小分组配置文件",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "mocks"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "description": { "type": "string" },
+    "mocks": { "type": "array", "items": { "$ref": "#/definitions/mock" } }
+  },
+  "definitions": {
+    "mock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "method", "enabled", "rules"],
+      "properties": {
+        "class": { "type": "string", "minLength": 1 },
+        "method": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string", "pattern": "^\\(.*\\)(V|Z|B|C|D|F|I|J|S|L[^;]+;|\\[.*)$" },
+        "description": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "defaultAction": { "$ref": "#/definitions/action" },
+        "rules": { "type": "array", "items": { "$ref": "#/definitions/rule" } }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matchType", "action"],
+      "properties": {
+        "matchType": { "enum": ["FULL_MATCH", "PATTERN_MATCH"] },
+        "description": { "type": "string" },
+        "args": { "type": "array" },
+        "argsPattern": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "action": { "$ref": "#/definitions/action" }
+      },
+      "oneOf": [
+        {
+          "properties": { "matchType": { "const": "FULL_MATCH" } },
+          "required": ["args"]
+        },
+        {
+          "properties": { "matchType": { "const": "PATTERN_MATCH" } },
+          "required": ["argsPattern"]
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["VALUE", "THROW", "VOID"] },
+        "value": {},
+        "exception": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+        "message": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "VALUE" } } },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "THROW" } } },
+          "then": { "required": ["exception"] }
+        }
+      ]
+    }
+  }
+}

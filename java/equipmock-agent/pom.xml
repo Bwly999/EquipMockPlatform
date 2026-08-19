@@ -46,5 +46,78 @@
 
   <build>
     <finalName>equip-mock-agent</finalName>
+    <plugins>
+      <!-- 环境适配（非设计偏离）：离线仓库缺 surefire 2.22.2 的 junit-platform provider，模块内覆写 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <dependencies>
+          <!-- 离线仓库无 junit-platform-launcher:1.8.2，钉到本地已有 1.9.3 -->
+          <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.9.3</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+      <!-- M1-5 shade 打包（02 §7）：
+           byte-buddy → io.equipmock.shaded.bytebuddy、gson → io.equipmock.shaded.gson relocate；
+           pf4j 只合并不 relocate（plugin-api 的 ExtensionPoint 契约须与插件编译期同包名）；
+           MANIFEST：Premain-Class / Boot-Class-Path / Can-Retransform-Classes / Implementation-Version；
+           排除三方签名文件，避免 merge 后签名失效导致类加载失败。 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>shade-agent</id>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <!-- 不生成 dependency-reduced-pom.xml（保持模块目录干净） -->
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <relocations>
+                <relocation>
+                  <pattern>net.bytebuddy</pattern>
+                  <shadedPattern>io.equipmock.shaded.bytebuddy</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>com.google.gson</pattern>
+                  <shadedPattern>io.equipmock.shaded.gson</shadedPattern>
+                </relocation>
+              </relocations>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>META-INF/DEPENDENCIES</exclude>
+                    <exclude>META-INF/LICENSE*</exclude>
+                    <exclude>META-INF/NOTICE*</exclude>
+                    <exclude>module-info.class</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <manifestEntries>
+                    <Premain-Class>com.equipmock.agent.AgentPremain</Premain-Class>
+                    <Boot-Class-Path>equip-mock-bootstrap.jar</Boot-Class-Path>
+                    <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                    <Implementation-Title>equipmock-agent</Implementation-Title>
+                    <Implementation-Version>${project.version}</Implementation-Version>
+                  </manifestEntries>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
   </build>
 </project>

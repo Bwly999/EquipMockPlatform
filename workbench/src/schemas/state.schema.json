@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "equipmock/state@1",
+  "title": "EquipMock state.json（Agent 专写，只读展示）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agentVersion", "pid", "startedAt", "activeGroup", "mockEnabled", "plugins"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "agentVersion": { "type": "string" },
+    "pid": { "type": "integer" },
+    "startedAt": { "type": "string" },
+    "lastWriteAt": { "type": "string" },
+    "activeGroup": { "type": "string" },
+    "mockEnabled": { "type": "boolean" },
+    "instrumentedClasses": { "type": "integer" },
+    "plugins": { "type": "array", "items": { "$ref": "#/definitions/pluginState" } },
+    "lastError": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["time", "file", "message"],
+          "properties": {
+            "time": { "type": "string" },
+            "file": { "type": "string" },
+            "message": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "needsRestart": { "type": "array", "items": { "type": "string" } }
+  },
+  "definitions": {
+    "pluginState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "state"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" },
+        "state": {
+          "enum": ["STARTED", "RESOLVED", "DISABLED", "MISSING", "REJECTED", "FAILED"]
+        },
+        "mockPoints": { "type": "integer" },
+        "error": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

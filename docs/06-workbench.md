@@ -122,7 +122,7 @@ workbench/
 - 卡片：agent 版本/pid/启动时间、生效组、mockEnabled、instrumentedClasses、needsRestart（红字：需重启宿主才生效的类）。
 - 插件状态表（同 §6 徽章数据源）。
 - lastError（若有）：文件+消息+时间，点击跳转配置页对应小分组。
-- 日志尾部：`logs/agent.log` 最后 200 行，自动滚动+暂停按钮（`state:subscribe` 推送）。
+- 日志尾部：`logs/` 下 `agent.log*`（JUL FileHandler 滚动文件带代号 `.0`–`.4`）合并取最后 200 行，自动滚动+暂停按钮（`state:subscribe` 推送）。
 - 说明文案：agent 未运行时此页展示"未检测到 agent 心跳（state.json 未更新）"，数据仍可看（最后一次快照）。
 
 ## 8. 状态管理

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "equipmock/settings@1",
+  "title": "EquipMock settings.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["activeGroup", "mockEnabled"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "activeGroup": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+    "mockEnabled": { "type": "boolean" }
+  }
+}

@@ -142,9 +142,9 @@ public final class MockAdvice {
 }
 ```
 
-实现要点（给开发 Agent 的落地说明）：
+实现要点（给开发 Agent 的落地说明，**M1 实测修正后的最终语义**）：
 
-1. `skipOn` 的语义是"enter 返回值等于该值时跳过原方法体"。用 int 常量：`REAL=0` 表示不跳过，`SKIP=1` 表示跳过；`@Advice.Local("MR") MockResult` 在 enter 中赋值、exit 中读取，跨 enter/exit 传递 MockResult。
+1. 插桩采用**两段式 enter+exit**：byte-buddy 1.9.16 实测发现 `skipOn=OnNonDefaultValue` 的跳过路径只执行"返回默认值"（如 `iconst_0; ireturn`），enter 返回值**不会**作为方法返回值回传。因此：enter 返回 Object（即 MockResult；null=REAL 不跳过原方法体，非 null=跳过；THROW 在 enter 内经 SneakyThrow 直接抛出）；exit 通过 `@Advice.Enter` 读回 MockResult，按 `@Advice.Return(readOnly=false)` 写回目标返回值（Object 模板加 `typing=DYNAMIC`；Void 模板的 exit 不带 Return 参数）。exit 在跳过/放行两条路径均会执行。
 2. **advice 方法体只允许引用 bootstrap 契约类**（Spy/MockResult/EnterResult/SneakyThrow-复制进 bootstrap）——字节码会被复制进宿主类，引用其它 agent 类会 NoClassDefFoundError。
 3. `SneakyThrow.raise` 放入 bootstrap jar：通过 JDK7 `invokeExact`/cast 技巧或经典 `thrower` 方法实现"无声明抛出受检异常"，保持插桩对宿主异常表透明。
 4. `@Advice.Return` 对 void 方法：单独一个 `VoidAdvice`（exit 不写 ret）或 `readOnly` 处理，byte-buddy 1.9.16 对 void+`@Advice.Return` 组合会校验失败，需要按返回类型是否 void 生成/选择两个 advice 模板（`MockAdvice` / `MockVoidAdvice`）。

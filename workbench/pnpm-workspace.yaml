@@ -1,0 +1,8 @@
+allowBuilds:
+  '@tailwindcss/oxide': true
+  electron: true
+  electron-winstaller: false
+  esbuild: true
+# pnpm 11 的设置新家（原 package.json 的 pnpm 字段不再读取）
+# electron-builder 依赖链上的 @electron/rebuild 引用了 git 型子依赖 @electron/node-gyp，按需放行
+blockExoticSubdeps: false

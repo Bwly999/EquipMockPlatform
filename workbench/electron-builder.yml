@@ -1,0 +1,37 @@
+# electron-builder 配置（06 §9 / D18）：NSIS 安装包 + portable zip 双目标
+appId: com.equipmock.workbench
+productName: EquipMock Workbench
+copyright: EquipMock
+directories:
+  output: release
+  buildResources: resources
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+asar: true
+compression: maximum
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: EquipMock工作台
+  artifactName: ${productName}-${version}-setup.${ext}
+  unicode: true
+  installerLanguages:
+    - zh_CN
+zip:
+  artifactName: ${productName}-${version}-portable.${ext}
+electronLanguages:
+  - zh_CN
+  - en_US

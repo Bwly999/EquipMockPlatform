@@ -13,7 +13,33 @@
   <artifactId>equipmock-bootstrap</artifactId>
   <name>EquipMock Bootstrap (Spy 桥接，零依赖)</name>
 
+  <!-- 产物保持零第三方依赖（M1-1 验收：jar 内仅 com/equipmock/bootstrap/**）；junit 仅测试期 -->
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+    </dependency>
+  </dependencies>
+
   <build>
     <finalName>equip-mock-bootstrap</finalName>
+    <plugins>
+      <!-- 环境适配（非设计偏离）：本机离线仓库缺 surefire-junit-platform:2.22.2 provider，
+           仅有 3.2.5；父 POM 未改动，模块内覆写 surefire 版本以离线执行 JUnit5 测试 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <dependencies>
+          <!-- 离线仓库无 junit-platform-launcher:1.8.2（surefire 默认按平台版本对齐下载），
+               显式钉到本地已有的 1.9.3（与 junit-jupiter 5.8.2 引擎 SPI 兼容） -->
+          <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.9.3</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+    </plugins>
   </build>
 </project>

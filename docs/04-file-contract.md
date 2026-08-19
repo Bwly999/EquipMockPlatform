@@ -13,7 +13,7 @@ json-schema 规范文件随代码维护（`docs/schemas/*.schema.json`，工作�
 │  ├─ plugin-registry.json
 │  └─ <任意名>.jar
 ├─ config/groups/<groupName>/<subGroup>.json
-├─ logs/agent.log
+├─ logs/agent.log*            # JUL 滚动日志（FileHandler 代号 .0–.4）
 └─ state.json            # agent 专写，人/工作台只读
 ```
 
@@ -190,7 +190,7 @@ json-schema 规范文件随代码维护（`docs/schemas/*.schema.json`，工作�
 
 - `plugins[].state`: `STARTED` | `RESOLVED`（加载未启用）| `DISABLED` | `MISSING`（清单有 jar 无）| `REJECTED`（版本硬校验失败，error 说明）| `FAILED`（异常，error 含原因）。
 - `needsRestart`: 字符串数组，热导入 retransform 失败需重启宿主才生效的类名。
-- 工作台状态面板轮询此文件（1s）+ `logs/agent.log` 尾部（见 06 §5.3）。
+- 工作台状态面板轮询此文件（1s）+ `logs/` 下 `agent.log*`（滚动文件带代号）尾部（见 06 §7）。
 - agent 对 state.json 自身同样走原子写；若文件被占用写失败，重试 3 次后仅记日志（绝不影响宿主运行）。
 
 ## 7. 变更语义总表（Agent 监听反应）
