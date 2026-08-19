@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "equipmock/plugin-registry@1",
+  "title": "EquipMock plugin-registry.json（插件清单，唯一事实源）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["plugins"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "plugins": { "type": "array", "items": { "$ref": "#/definitions/plugin" } }
+  },
+  "definitions": {
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "jar", "enabled"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "alias": { "type": "string" },
+        "jar": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.jar$" },
+        "enabled": { "type": "boolean" },
+        "importedAt": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}
