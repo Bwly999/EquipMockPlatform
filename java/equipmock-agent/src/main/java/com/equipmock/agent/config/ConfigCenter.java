@@ -171,6 +171,14 @@ public final class ConfigCenter {
         recordError(file, message);
     }
 
+    /**
+     * 强制重写 state.json（M3：插件装载/启停/卸载等配置中心之外的变更点，
+     * 02 §8 回写时机全集）。与其它入口同样 synchronized 串行。
+     */
+    public synchronized void refreshState() {
+        writeState();
+    }
+
     // ------------------------------------------------------------------
     // 注入点（AgentPremain 装配）
     // ------------------------------------------------------------------

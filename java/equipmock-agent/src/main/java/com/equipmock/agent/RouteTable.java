@@ -34,9 +34,30 @@ public interface RouteTable {
         return lookup(className, methodName, descriptor);
     }
 
+    /**
+     * 查询一次调用的 Mock 决策（带实参与接收者，M3 插件分支需要 self 构造
+     * {@link com.equipmock.api.MockInvocation}）。默认委托带实参形式
+     * （配置中心路由不需要 self）。
+     *
+     * @param self 调用接收者（静态方法为 null）
+     */
+    default MockResult lookup(String className, String methodName, String descriptor,
+                              Object[] args, Object self) {
+        return lookup(className, methodName, descriptor, args);
+    }
+
     /** 全部目标类名集合（用于插桩注册的精确类匹配；动态查询——新目标类首次加载即被织入） */
     Set<String> targetClasses();
 
     /** 某目标类上需要织入 advice 的方法名集合（只织入已声明方法，其余方法字节码不变） */
     Set<String> methodNames(String className);
+
+    /**
+     * 某目标类是否需要织入<b>全部</b>声明方法（M3：插件 methods={"*"} 声明，
+     * 05 §3 declaredOnly 语义）。插桩 matcher 在类加载/transform 时刻动态查询；
+     * 默认 false（配置中心路由不使用通配）。
+     */
+    default boolean interceptAllMethods(String className) {
+        return false;
+    }
 }

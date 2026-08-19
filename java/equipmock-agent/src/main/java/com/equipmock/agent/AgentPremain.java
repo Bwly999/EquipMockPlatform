@@ -3,6 +3,8 @@ package com.equipmock.agent;
 import com.equipmock.agent.config.ConfigCenter;
 import com.equipmock.agent.config.FileWatcher;
 import com.equipmock.agent.config.MatchEngine;
+import com.equipmock.agent.plugin.CompositeRouteTable;
+import com.equipmock.agent.plugin.PluginService;
 import com.google.gson.JsonObject;
 
 import java.lang.instrument.Instrumentation;
@@ -63,29 +65,40 @@ public final class AgentPremain {
                 }
                 log.severe("agent degraded: mock disabled, host continues un-instrumented");
             } else {
-                // 5. 配置中心路由表（M2 数据源；M3 与插件 MockPoint 组合）
+                // 5. 插件服务（M3，02 §3 第 5 步）：清单驱动 PF4J 装载 + MockPoint 注册；
+                //    state 的 plugins[]/needsRestart 数据源在装载前注入
+                PluginService pluginService = new PluginService(home, log, resolveVersion(),
+                        configCenter::refreshState, configCenter::reportRuntimeError);
+                stateWriter.setPluginsSupplier(pluginService::statuses);
+                stateWriter.setNeedsRestartSupplier(pluginService::needsRestart);
+                pluginService.setInstrumentation(inst);
+                pluginService.start();
+
+                // 6. 组合路由表（M3，02 §5.2）：插件 handler（写死优先）→ 配置中心规则
                 MatchEngine engine = new MatchEngine(log, configCenter::reportRuntimeError);
-                ConfigCenterRouteTable routeTable =
+                ConfigCenterRouteTable configTable =
                         new ConfigCenterRouteTable(configCenter, engine);
+                CompositeRouteTable routeTable =
+                        new CompositeRouteTable(pluginService, configTable, log);
                 configCenter.setInstrumentedClassCount(routeTable::targetClassCount);
 
-                // 6. 反射注入 Spy.HANDLER（必须早于任何插桩类被调用——premain 阶段宿主 main 未执行）
+                // 7. 反射注入 Spy.HANDLER（必须早于任何插桩类被调用——premain 阶段宿主 main 未执行）
                 //    注意：本方法签名不得出现 AgentSpyHandler（其实现 bootstrap 的 ISpyHandler，
                 //    签名引用会在 premain 类加载期触发解析，拔 bootstrap 场景将 NoClassDefFoundError）
                 injectSpyHandler(log, routeTable, configCenter,
                         configCenter.settings().mockEnabled);
 
-                // 7. 插桩注册（RouteTable 动态 matcher：配置新增的未加载类首次加载即织入）
+                // 8. 插桩注册（RouteTable 动态 matcher：配置/插件新增的未加载类首次加载即织入）
                 InstrumentationRegistrar.register(inst, log, routeTable);
                 instrumentedClasses = routeTable.targetClassCount();
 
-                // 8. 目标类变更监控（已加载类记 info：重启生效，M3 retransform 解决）
+                // 9. 目标类变更监控（已加载类记 info：重启生效，M3 retransform 解决）
                 TargetClassChangeMonitor monitor =
                         new TargetClassChangeMonitor(inst, routeTable, log);
                 monitor.initBaseline();
                 configCenter.setGroupReloadListener(monitor);
 
-                // 9. FileWatcher 启动（03 §7：settings 切组/开关、活动组重建、registry M3 预留）
+                // 10. FileWatcher 启动（03 §7：settings 切组/开关、活动组重建、registry diff）
                 FileWatcher watcher = new FileWatcher(home.root(), new FileWatcher.Listener() {
                     @Override
                     public void onSettingsChanged(java.nio.file.Path settingsFile) {
@@ -99,8 +112,7 @@ public final class AgentPremain {
 
                     @Override
                     public void onPluginRegistryChanged(java.nio.file.Path registryFile) {
-                        // M3 预留：PluginService diff（02 §6.2 / 04 §7）
-                        log.info("plugin-registry.json changed (plugin loading arrives in M3)");
+                        pluginService.onRegistryChanged();
                     }
                 }, log);
                 watcher.start();

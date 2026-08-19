@@ -82,11 +82,22 @@ public final class InstrumentationRegistrar {
                 .transform((DynamicType.Builder<?> b, TypeDescription type,
                             ClassLoader classLoader, JavaModule module) ->
                         b.visit(adviceByReturnType(
-                                declaredMethodNames(routeTable.methodNames(type.getName())))));
+                                declaredMethods(routeTable, type.getName()))));
         builder.installOn(inst);
         log.info("instrumentation registered (dynamic RouteTable matcher, "
                 + routeTable.targetClasses().size() + " target class(es) at install time)");
         return listener;
+    }
+
+    /** 方法名集合 → "已声明方法名 contains" 匹配器（M3：methods={"*"} 时织入全部声明方法） */
+    private static ElementMatcher.Junction<MethodDescription> declaredMethods(
+            RouteTable routeTable, String className) {
+        if (routeTable.interceptAllMethods(className)) {
+            // 05 §3 declaredOnly 语义：ForDeclaredMethods 本身只作用于本类声明的方法，
+            // isMethod 排除构造器/类型初始化器
+            return ElementMatchers.<MethodDescription>isMethod();
+        }
+        return declaredMethodNames(routeTable.methodNames(className));
     }
 
     /** 方法名集合 → "已声明方法名 contains" 匹配器 */

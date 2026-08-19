@@ -40,7 +40,8 @@ public final class AgentSpyHandler implements ISpyHandler {
             // 兼容 #t 模板可能出现的内部名（斜杠）形式，统一为点分 FQCN
             String normalized = className.indexOf('/') >= 0
                     ? className.replace('/', '.') : className;
-            MockResult result = routeTable.lookup(normalized, methodName, descriptor, args);
+            MockResult result = routeTable.lookup(normalized, methodName, descriptor,
+                    args, self);
             if (result == null) {
                 return null; // 未命中：放行真实方法
             }

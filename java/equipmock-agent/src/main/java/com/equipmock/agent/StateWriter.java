@@ -1,6 +1,7 @@
 package com.equipmock.agent;
 
 import com.equipmock.agent.config.StateSink;
+import com.equipmock.agent.plugin.PluginStatus;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -15,7 +16,10 @@ import java.nio.file.StandardCopyOption;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
@@ -44,10 +48,25 @@ public final class StateWriter implements StateSink {
     private final String agentVersion;
     private final String startedAt = OffsetDateTime.now().format(TIME);
 
+    /** M3：plugins[] 数据源（PluginService::statuses）；null=空数组 */
+    private volatile Supplier<List<PluginStatus>> pluginsSupplier;
+    /** M3：needsRestart 数据源（PluginService::needsRestart）；null=空数组 */
+    private volatile Supplier<Collection<String>> needsRestartSupplier;
+
     public StateWriter(Path stateFile, Logger log, String agentVersion) {
         this.stateFile = stateFile;
         this.log = log;
         this.agentVersion = agentVersion;
+    }
+
+    /** 注入 plugins[] 数据源（AgentPremain 装配 PluginService 后调用） */
+    public void setPluginsSupplier(Supplier<List<PluginStatus>> supplier) {
+        this.pluginsSupplier = supplier;
+    }
+
+    /** 注入 needsRestart 数据源 */
+    public void setNeedsRestartSupplier(Supplier<Collection<String>> supplier) {
+        this.needsRestartSupplier = supplier;
     }
 
     /** lastError 结构（04 §6）；message 为 null 时整体写 null */
@@ -86,9 +105,29 @@ public final class StateWriter implements StateSink {
             }
             state.add("groupFiles", files);
         }
-        state.add("plugins", new JsonArray()); // M2：无插件框架（M3 填充）
+        JsonArray plugins = new JsonArray();
+        Supplier<List<PluginStatus>> pluginsSource = this.pluginsSupplier;
+        if (pluginsSource != null) {
+            List<PluginStatus> statuses = pluginsSource.get();
+            if (statuses != null) {
+                for (PluginStatus status : statuses) {
+                    plugins.add(status.toJson());
+                }
+            }
+        }
+        state.add("plugins", plugins);
         state.add("lastError", lastError == null ? JsonNull.INSTANCE : lastError);
-        state.add("needsRestart", new JsonArray());
+        JsonArray needsRestart = new JsonArray();
+        Supplier<Collection<String>> needsRestartSource = this.needsRestartSupplier;
+        if (needsRestartSource != null) {
+            Collection<String> classes = needsRestartSource.get();
+            if (classes != null) {
+                for (String className : classes) {
+                    needsRestart.add(className);
+                }
+            }
+        }
+        state.add("needsRestart", needsRestart);
         writeAtomically(GSON.toJson(state));
     }
 

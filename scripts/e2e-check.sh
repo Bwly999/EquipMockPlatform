@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# EquipMock 端到端验收脚本（M2 配置中心；由 M1 的 m1-verify.sh 演进而来）
+# EquipMock 端到端验收脚本（M2 配置中心 + M3 插件框架；由 M1 的 m1-verify.sh 演进而来）
 #
 # 内容：
 #   1. mvn -q clean package 全模块构建（含全部单测）
@@ -8,9 +8,11 @@
 #   3. 不带 agent 基线运行（真实值断言）
 #   4. iterations=0 无限循环 demo-host + -javaagent 后台运行：
 #      通过原子修改配置文件驱动 docs/03 §9 十条用例 + M1 原有断言（配置文件形式复现）
-#   5. state.json 结构断言（activeGroup/mockEnabled/groupFiles/lastError）
-#   6. agent jar 条目扫描（无 net/bytebuddy、com/google/gson 原始包名）
-#   7.（附加）拔掉 bootstrap.jar 降级场景（M1 验收保持）
+#   5. [plugin] M3 全循环：现场编译 fixture 插件 jar → 热导入（含已加载类 retransform）
+#      → 停用/启用 → 卸载 → 版本拒绝（Plugin-Requires >=9.9.9），宿主全程不重启
+#   6. state.json 结构断言（activeGroup/mockEnabled/groupFiles/lastError/plugins）
+#   7. agent jar 条目扫描（无 net/bytebuddy、com/google/gson 原始包名）
+#   8.（附加）拔掉 bootstrap.jar 降级场景（M1 验收保持）
 #
 # 任一断言 FAIL 则 exit 1；全部 PASS 则 exit 0。
 # =============================================================================
@@ -106,12 +108,12 @@ write_settings() { # write_settings <activeGroup> <mockEnabled>
 }
 
 echo "==================================================================="
-echo " EquipMock e2e-check (M2) : $(date '+%Y-%m-%d %H:%M:%S')"
+echo " EquipMock e2e-check (M2+M3) : $(date '+%Y-%m-%d %H:%M:%S')"
 echo " ROOT      : $ROOT"
 echo "==================================================================="
 
 # ---------------------------------------------------------------------------
-echo "--- [1/7] mvn -q clean package（全模块含测试） ---"
+echo "--- [1/8] mvn -q clean package（全模块含测试） ---"
 cd "$ROOT"
 mkdir -p "$ROOT/target"
 if mvn -q clean package > "$ROOT/target/e2e-build.log" 2>&1; then
@@ -124,7 +126,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-echo "--- [2/7] 组装发布布局并预置配置 ---"
+echo "--- [2/8] 组装发布布局并预置配置 ---"
 rm -rf "$STAGE"
 mkdir -p "$STAGE" "$GROUP_DEFAULT" "$GROUP_FS"
 cp "$ROOT/java/equipmock-agent/target/equip-mock-agent.jar" "$STAGE/" \
@@ -323,7 +325,7 @@ JSON
 }
 
 # ---------------------------------------------------------------------------
-echo "--- [3/7] 不带 agent 基线运行（iterations=1） ---"
+echo "--- [3/8] 不带 agent 基线运行（iterations=1） ---"
 BASE_OUT="$STAGE/baseline-run.out"
 (cd "$STAGE" && "$JAVA" -cp demo-host.jar -Dequipmock.demo.iterations=1 com.equip.demo.DemoMain) > "$BASE_OUT" 2>&1
 BASE_RC=$?
@@ -338,7 +340,7 @@ check "基线 powerOn 真实打点"           "$(last_value "$BASE_OUT" 'realPow
 check "基线 unrelated"                  "$(last_value "$BASE_OUT" 'unrelated=')"         "unrelated=real-hello"
 
 # ---------------------------------------------------------------------------
-echo "--- [4/7] 带 agent 无限循环运行 + 热重载十条用例（03 §9） ---"
+echo "--- [4/8] 带 agent 无限循环运行 + 热重载十条用例（03 §9） ---"
 HOST_OUT="$STAGE/hot-reload.out"
 rm -f "$HOST_OUT"
 cd "$STAGE"
@@ -488,13 +490,208 @@ if wait_last "$HOST_OUT" 'readStatus(1,CH1)=' "readStatus(1,CH1)=5"; then
   pass "用例8-f. mockEnabled=true 恢复 Mock"
 fi
 
+# ---------------------------------------------------------------------------
+echo "--- [5/8] M3 插件全循环（导入→停用→启用→卸载→版本拒绝，宿主全程不重启） ---"
+STATE_FILE="$HOME_DIR/state.json"
+FIXT="$STAGE/fixture-plugin"
+JAVAC="$JAVA_HOME/bin/javac.exe"
+
+# fixture 插件源码现场编译（classpath=agent.jar：plugin-api/pf4j 均 unrelocate 随包分发）
+mkdir -p "$FIXT/classes"
+if "$JAVAC" -encoding UTF-8 -cp "$STAGE/equip-mock-agent.jar" -d "$FIXT/classes" \
+    "$ROOT/scripts/fixture-plugin/mock/e2e/PowerDeviceHandler.java" \
+    "$ROOT/scripts/fixture-plugin/mock/e2e/UnrelatedHandler.java" \
+    "$ROOT/scripts/fixture-plugin/mock/e2e/bad/BadVersionHandler.java" 2> "$FIXT/javac.err"; then
+  pass "plugin-a. fixture 插件源码 javac 编译（agent.jar 提供 plugin-api+pf4j）"
+else
+  fail "plugin-a. fixture 插件编译失败"
+  sed -n '1,10p' "$FIXT/javac.err"
+fi
+
+# 打最小插件 jar：manifest（Plugin-Id/Version/Requires）+ META-INF/extensions.idx
+# 注意：pf4j 自带注解处理器会在 javac 输出目录生成含全部 @Extension 的
+# extensions.idx——拷贝类文件后必须以本插件自己的清单覆盖，防止混入其它
+# fixture 的 handler。
+mk_fixture_jar() { # <输出文件名> <Plugin-Id> <Plugin-Requires> <扩展类FQCN...>
+  local name="$1" pid="$2" req="$3"; shift 3
+  local staging="$FIXT/pkg-$pid"
+  rm -rf "$staging"
+  mkdir -p "$staging/META-INF"
+  {
+    echo "Manifest-Version: 1.0"
+    echo "Plugin-Id: $pid"
+    echo "Plugin-Version: 1.0.0"
+    echo "Plugin-Requires: $req"
+    echo "Plugin-Description: e2e fixture plugin"
+  } > "$staging/MANIFEST.MF"
+  cp -r "$FIXT/classes/." "$staging/"
+  rm -f "$staging/META-INF/extensions.idx"
+  for c in "$@"; do echo "$c" >> "$staging/META-INF/extensions.idx"; done
+  (cd "$staging" && "$JAR_TOOL" cfm "$FIXT/$name" MANIFEST.MF META-INF mock) \
+    && pass "plugin-b. 打包 $name（manifest: Plugin-Requires: $req）" \
+    || fail "plugin-b. 打包 $name 失败"
+}
+
+mk_fixture_jar mock-e2e-1.0.0.jar mock-e2e "equipmock >=1.0.0 <2.0.0" \
+  mock.e2e.PowerDeviceHandler mock.e2e.UnrelatedHandler
+mk_fixture_jar mock-badver-1.0.0.jar mock-badver "equipmock >=9.9.9" \
+  mock.e2e.bad.BadVersionHandler
+
+# state.json 的 plugins[]/needsRestart 视图（jjs）
+cat > "$STAGE/pluginsview.js" <<'JSEOF'
+var s = JSON.parse(readFully(arguments[0]));
+for (var i = 0; i < s.plugins.length; i++) {
+  var p = s.plugins[i];
+  print(p.id + '|' + p.state + '|' + p.version + '|' + p.mockPoints + '|'
+      + (p.error == null ? '' : p.error));
+}
+print('NEEDS=' + JSON.stringify(s.needsRestart));
+JSEOF
+
+write_registry() { # stdin → plugins/plugin-registry.json（原子写协议）
+  cat | awrite "$HOME_DIR/plugins/plugin-registry.json"
+}
+
+plugin_field() { # <id> → "id|state|version|mockPoints|error"（无该条目输出空）
+  "$JJS" -scripting "$STAGE/pluginsview.js" -- "$STATE_FILE" 2>/dev/null \
+    | grep -a "^$1|" | tail -1
+}
+
+wait_plugin() { # <id> <state> [超时秒=12]：轮询 state.plugins[id].state
+  local id="$1" state="$2" timeoutS="${3:-12}"
+  local deadline=$(( $(date +%s) + timeoutS ))
+  local view=""
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    view="$(plugin_field "$id")"
+    if [ -n "$view" ] && [ "${view#*$id|$state|}" != "$view" ]; then
+      return 0
+    fi
+    sleep 0.3
+  done
+  fail "等待超时: state.plugins[$id] 期望 $state（last='${view:-无该条目}'）"
+  return 1
+}
+
+wait_plugin_absent() { # <id> [超时秒=12]
+  local id="$1" timeoutS="${2:-12}"
+  local deadline=$(( $(date +%s) + timeoutS ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if [ -z "$(plugin_field "$id")" ]; then
+      return 0
+    fi
+    sleep 0.3
+  done
+  fail "等待超时: state.plugins 仍含 '$id'"
+  return 1
+}
+
+registry_entry() { # <id> <jar> <enabled> → JSON 条目
+  printf '{"id":"%s","alias":"e2e","jar":"%s","enabled":%s}' "$1" "$2" "$3"
+}
+
+echo "--- plugin.0 初始：清单未登记 → 全部走配置 ---"
+check "plugin-0a. getName 走配置"       "$(last_value "$HOST_OUT" 'getName()=')"        "getName()=MOCK-DEVICE"
+check "plugin-0b. readStatus 走配置"    "$(last_value "$HOST_OUT" 'readStatus(1,CH1)=')" "readStatus(1,CH1)=5"
+check "plugin-0c. 未拦截类真实"         "$(last_value "$HOST_OUT" 'unrelated=')"        "unrelated=real-hello"
+
+echo "--- plugin.1 热导入（jar 拷入 plugins/ + 写清单）→ 不重启生效 ---"
+cp "$FIXT/mock-e2e-1.0.0.jar" "$HOME_DIR/plugins/"
+printf '{\n  "$schema": "equipmock/plugin-registry@1",\n  "plugins": [\n    %s\n  ]\n}\n' \
+  "$(registry_entry mock-e2e mock-e2e-1.0.0.jar true)" | write_registry
+sleep 3
+if wait_last "$HOST_OUT" 'getName()=' "getName()=PLUGIN-NAME" 15; then
+  pass "plugin-1a. getName()=PLUGIN-NAME（handler 写死优先于配置 MOCK-DEVICE）"
+fi
+if wait_last "$HOST_OUT" 'unrelated=' "unrelated=PLUGIN-HELLO" 15; then
+  pass "plugin-1b. 已加载未插桩类 UnrelatedService 经 retransform 补齐后被拦截（D9）"
+fi
+check "plugin-1c. readStatus handler=null 落配置=5" "$(last_value "$HOST_OUT" 'readStatus(1,CH1)=')" "readStatus(1,CH1)=5"
+if wait_plugin mock-e2e STARTED; then
+  pass "plugin-1d. state.plugins[mock-e2e].state=STARTED"
+fi
+PV="$(plugin_field mock-e2e)"
+check "plugin-1e. state.plugins[mock-e2e].mockPoints=2"  "$(echo "$PV" | awk -F'|' '{print $4}')" "2"
+check "plugin-1f. state.plugins[mock-e2e].version=1.0.0" "$(echo "$PV" | awk -F'|' '{print $3}')" "1.0.0"
+check "plugin-1g. needsRestart=[]（retransform 全部成功）" \
+  "$("$JJS" -scripting "$STAGE/pluginsview.js" -- "$STATE_FILE" 2>/dev/null | grep -a '^NEEDS=')" "NEEDS=[]"
+
+echo "--- plugin.2 enabled=false → 路由开关断开（REAL→配置，无字节码操作） ---"
+printf '{\n  "$schema": "equipmock/plugin-registry@1",\n  "plugins": [\n    %s\n  ]\n}\n' \
+  "$(registry_entry mock-e2e mock-e2e-1.0.0.jar false)" | write_registry
+sleep 3
+if wait_last "$HOST_OUT" 'getName()=' "getName()=MOCK-DEVICE" 15; then
+  pass "plugin-2a. 停用后 getName 回配置值 MOCK-DEVICE"
+fi
+check "plugin-2b. readStatus=5 不变（仍走配置）" "$(last_value "$HOST_OUT" 'readStatus(1,CH1)=')" "readStatus(1,CH1)=5"
+check "plugin-2c. unrelated 回真实（路由断开）"   "$(last_value "$HOST_OUT" 'unrelated=')"        "unrelated=real-hello"
+if wait_plugin mock-e2e DISABLED; then
+  pass "plugin-2d. state.plugins[mock-e2e].state=DISABLED"
+fi
+
+echo "--- plugin.3 enabled=true → 恢复 ---"
+printf '{\n  "$schema": "equipmock/plugin-registry@1",\n  "plugins": [\n    %s\n  ]\n}\n' \
+  "$(registry_entry mock-e2e mock-e2e-1.0.0.jar true)" | write_registry
+sleep 3
+if wait_last "$HOST_OUT" 'getName()=' "getName()=PLUGIN-NAME" 15; then
+  pass "plugin-3a. 重新启用 getName=PLUGIN-NAME"
+fi
+check "plugin-3b. unrelated=PLUGIN-HELLO 恢复" "$(last_value "$HOST_OUT" 'unrelated=')" "unrelated=PLUGIN-HELLO"
+if wait_plugin mock-e2e STARTED; then
+  pass "plugin-3c. state.plugins[mock-e2e].state=STARTED"
+fi
+
+echo "--- plugin.4 删除清单条目 → 卸载路由（字节码不回滚，调用自然 REAL→配置） ---"
+printf '{\n  "$schema": "equipmock/plugin-registry@1",\n  "plugins": []\n}\n' | write_registry
+sleep 3
+if wait_last "$HOST_OUT" 'getName()=' "getName()=MOCK-DEVICE" 15; then
+  pass "plugin-4a. 卸载后 getName 回配置值"
+fi
+check "plugin-4b. readStatus=5 仍走配置" "$(last_value "$HOST_OUT" 'readStatus(1,CH1)=')" "readStatus(1,CH1)=5"
+check "plugin-4c. unrelated 回真实"      "$(last_value "$HOST_OUT" 'unrelated=')"        "unrelated=real-hello"
+if wait_plugin_absent mock-e2e; then
+  pass "plugin-4d. state.plugins 无 mock-e2e 条目"
+fi
+
+echo "--- plugin.5 版本硬校验拒绝（Plugin-Requires: equipmock >=9.9.9） ---"
+cp "$FIXT/mock-badver-1.0.0.jar" "$HOME_DIR/plugins/"
+printf '{\n  "$schema": "equipmock/plugin-registry@1",\n  "plugins": [\n    %s\n  ]\n}\n' \
+  "$(registry_entry mock-badver mock-badver-1.0.0.jar true)" | write_registry
+sleep 3
+if wait_plugin mock-badver REJECTED; then
+  pass "plugin-5a. state.plugins[mock-badver].state=REJECTED"
+fi
+BPV="$(plugin_field mock-badver)"
+case "$BPV" in
+  *"requires equipmock>=9.9.9, current=1.0.0-SNAPSHOT"*)
+    pass "plugin-5b. error 写明 'requires equipmock>=9.9.9, current=1.0.0-SNAPSHOT'" ;;
+  *)
+    fail "plugin-5b. error 不符合契约: $BPV" ;;
+esac
+check "plugin-5c. 宿主不受影响 getName=MOCK-DEVICE" "$(last_value "$HOST_OUT" 'getName()=')" "getName()=MOCK-DEVICE"
+check "plugin-5d. readStatus=5 不受影响"            "$(last_value "$HOST_OUT" 'readStatus(1,CH1)=')" "readStatus(1,CH1)=5"
+
+echo "--- plugin.6 日志与清场 ---"
+if grep -Faq 'retransformed plugin target' "$HOME_DIR/logs"/agent.log* 2>/dev/null; then
+  pass "plugin-6a. agent.log 记录 retransform 补齐事件"
+else
+  fail "plugin-6a. agent.log 未记录 retransform 补齐事件"
+fi
+if grep -Fah 'SEVERE' "$HOME_DIR/logs"/agent.log* 2>/dev/null; then
+  fail "plugin-6b. agent.log 出现 SEVERE（M3 验收要求无异常日志）"
+else
+  pass "plugin-6b. 插件全循环无 SEVERE 日志"
+fi
+# 清场：移除 mock-badver 条目，让 [6/8] 的 M2 state 断言不受插件影响
+printf '{\n  "$schema": "equipmock/plugin-registry@1",\n  "plugins": []\n}\n' | write_registry
+sleep 2
+
 kill "$HOST_PID" 2>/dev/null
 sleep 1
 kill -9 "$HOST_PID" 2>/dev/null
 pass "demo-host 已停止"
 
 # ---------------------------------------------------------------------------
-echo "--- [5/7] state.json 结构断言 ---"
+echo "--- [6/8] state.json 结构断言 ---"
 cat > "$STAGE/jsoncheck.js" <<'JSEOF'
 var path = arguments[0];
 var text = readFully(path);
@@ -545,7 +742,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-echo "--- [6/7] agent jar 条目扫描（relocate 断言保持） ---"
+echo "--- [7/8] agent jar 条目扫描（relocate 断言保持） ---"
 AGENT_JAR="$STAGE/equip-mock-agent.jar"
 FORBIDDEN=$("$JAR_TOOL" -tf "$AGENT_JAR" | grep -cE '^net/bytebuddy/|^com/google/gson/')
 check "i1. agent jar 无 net/bytebuddy、com/google/gson 条目" "$FORBIDDEN" "0"
@@ -561,7 +758,7 @@ CONFIGCLS=$("$JAR_TOOL" -tf "$AGENT_JAR" | grep -cE '^com/equipmock/agent/config
 [ "$CONFIGCLS" -gt 0 ]   && pass "i6. config 中心类已入包（$CONFIGCLS 条）"        || fail "i6. 缺 com/equipmock/agent/config/**"
 
 # ---------------------------------------------------------------------------
-echo "--- [7/7] 附加：拔掉 bootstrap.jar 降级场景（M1 验收保持） ---"
+echo "--- [8/8] 附加：拔掉 bootstrap.jar 降级场景（M1 验收保持） ---"
 NOBOOT="$STAGE/no-bootstrap"
 mkdir -p "$NOBOOT"
 cp "$STAGE/equip-mock-agent.jar" "$NOBOOT/"
