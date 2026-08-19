@@ -4,7 +4,7 @@
   "title": "EquipMock 小分组配置文件",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "mocks"],
+  "required": ["mocks"],
   "properties": {
     "$schema": { "type": "string" },
     "name": { "type": "string", "minLength": 1, "maxLength": 64 },

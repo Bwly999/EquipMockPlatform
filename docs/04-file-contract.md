@@ -87,7 +87,7 @@ json-schema 规范文件随代码维护（`docs/schemas/*.schema.json`，工作�
 
 | 字段 | 必填 | 语义 |
 | --- | --- | --- |
-| name | 是 | 小分组名（显示用，默认=文件名） |
+| name | 否 | 小分组名（显示用，缺省=文件名去扩展名） |
 | description | 否 | 人读备注 |
 | mocks[].class | 是 | 目标类 FQCN（精确匹配） |
 | mocks[].method | 是 | 方法名 |
@@ -170,6 +170,7 @@ json-schema 规范文件随代码维护（`docs/schemas/*.schema.json`，工作�
   "activeGroup": "default",
   "mockEnabled": true,
   "instrumentedClasses": 12,
+  "groupFiles": { "cabinet": 6, "radar": 3 },
   "plugins": [
     {
       "id": "mock-cabinet",
