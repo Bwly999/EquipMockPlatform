@@ -49,7 +49,7 @@
               <Plugin-Version>${project.version}</Plugin-Version>
               <Plugin-Requires>equipmock &gt;=1.0.0</Plugin-Requires>
               <Plugin-Description>雷达/伺服硬件 Mock（示例插件）</Plugin-Description>
-              <Plugin-Provider>EquipMock</Provider>
+              <Plugin-Provider>EquipMock</Plugin-Provider>
             </manifestEntries>
           </archive>
         </configuration>
