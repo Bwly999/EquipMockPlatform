@@ -1,5 +1,6 @@
 package com.equipmock.agent;
 
+import com.equipmock.agent.config.StateSink;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -14,14 +15,19 @@ import java.nio.file.StandardCopyOption;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import java.util.logging.Logger;
 
 /**
- * state.json 回写（02 §3 第 9 步 / 04 §6）：agent 专写，工作台只读。
+ * state.json 回写（02 §3 第 9 步 / 02 §8 / 04 §6）：agent 专写，工作台只读。
  * 原子写协议（04 §5）：临时文件 + Files.move(ATOMIC_MOVE)，失败重试 3 次；
  * 文件被占用等最终失败仅记日志，绝不影响宿主运行。
+ *
+ * <p>M2 扩展（02 §8 回写时机全集）：activeGroup、mockEnabled、活动组各文件条目数
+ * （groupFiles，03 §2 第 4 步）、lastError {time,file,message}；
+ * instrumentedClasses 保持 M1 语义（注册的目标类数）。startedAt 固定为 agent 启动时刻。
  */
-public final class StateWriter {
+public final class StateWriter implements StateSink {
 
     /** 写失败重试次数（04 §6） */
     private static final int MAX_RETRIES = 3;
@@ -36,6 +42,7 @@ public final class StateWriter {
     private final Path stateFile;
     private final Logger log;
     private final String agentVersion;
+    private final String startedAt = OffsetDateTime.now().format(TIME);
 
     public StateWriter(Path stateFile, Logger log, String agentVersion) {
         this.stateFile = stateFile;
@@ -52,26 +59,34 @@ public final class StateWriter {
         return error;
     }
 
-    /**
-     * 全量写 state.json（M1 视图：无插件、无热导入）。
-     *
-     * @param activeGroup 活动配置组（settings）
-     * @param mockEnabled 全局开关（settings）
-     * @param instrumentedClasses 已注册插桩的目标类数（M1 语义=注册数，见 02 §8）
-     * @param lastError 启动期错误；null 表示无错误
-     */
+    /** M1 兼容视图（降级路径）：无组文件条目数字段 */
     public void write(String activeGroup, boolean mockEnabled, int instrumentedClasses,
                       JsonObject lastError) {
+        writeState(activeGroup, mockEnabled, instrumentedClasses, null, lastError);
+    }
+
+    @Override
+    public synchronized void writeState(String activeGroup, boolean mockEnabled,
+                                        int instrumentedClasses,
+                                        Map<String, Integer> groupFileEntryCounts,
+                                        JsonObject lastError) {
         JsonObject state = new JsonObject();
         state.addProperty("$schema", "equipmock/state@1");
         state.addProperty("agentVersion", agentVersion);
         state.addProperty("pid", currentPid());
-        state.addProperty("startedAt", OffsetDateTime.now().format(TIME));
+        state.addProperty("startedAt", startedAt);
         state.addProperty("lastWriteAt", OffsetDateTime.now().format(TIME));
         state.addProperty("activeGroup", activeGroup);
         state.addProperty("mockEnabled", mockEnabled);
         state.addProperty("instrumentedClasses", instrumentedClasses);
-        state.add("plugins", new JsonArray()); // M1：无插件框架
+        if (groupFileEntryCounts != null) {
+            JsonObject files = new JsonObject();
+            for (Map.Entry<String, Integer> e : groupFileEntryCounts.entrySet()) {
+                files.addProperty(e.getKey(), e.getValue().intValue());
+            }
+            state.add("groupFiles", files);
+        }
+        state.add("plugins", new JsonArray()); // M2：无插件框架（M3 填充）
         state.add("lastError", lastError == null ? JsonNull.INSTANCE : lastError);
         state.add("needsRestart", new JsonArray());
         writeAtomically(GSON.toJson(state));

@@ -21,21 +21,24 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.utility.JavaModule;
 
 import java.lang.instrument.Instrumentation;
-import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 
 /**
- * ByteBuddy 插桩注册（M1-4，02 §4）。
+ * ByteBuddy 插桩注册（M1-4，02 §4；M2-6 起数据源改为 {@link RouteTable} 动态查询）。
  *
  * <ul>
  *   <li>{@code disableClassFormatChanges + RETRANSFORMATION}：retransform 兼容
  *       （只加 advice 代码不改类结构，D8/D9）。</li>
  *   <li>ignore 掉平台自身与 JDK/非宿主包，防误伤。</li>
- *   <li>目标类用 {@code named(fqcn)} 精确匹配，逐类 transform。</li>
+ *   <li><b>类型/方法匹配均为 RouteTable 动态查询</b>：目标类用「类名 ∈
+ *       routeTable.targetClasses()」精确匹配、方法用「已声明方法名集合 contains」；
+ *       运行期配置新增的<b>未加载</b>类首次加载即被织入（M2 语义）；
+ *       已加载类在 M2 阶段仅记 info 日志（TargetClassChangeMonitor），
+ *       M3 的 retransform 机制解决补齐。</li>
  *   <li>方法匹配 = "路由表已声明方法名集合 contains" AND 返回类型；按返回类型把 10 个
  *       advice 模板分别织入（{@code ForDeclaredMethods.method(matcher, Advice.to(X))}
- *       组合，一个 visitor 覆盖全部返回类型分支）。</li>
+ *       组合，一个 visitor 覆盖全部返回类型分支）——与 M1 完全一致，零语义改动。</li>
  * </ul>
  */
 public final class InstrumentationRegistrar {
@@ -44,13 +47,13 @@ public final class InstrumentationRegistrar {
     }
 
     /**
-     * 注册全部目标类的插桩。
+     * 注册插桩（动态 RouteTable 数据源）。
      *
-     * @param targets 类名 → 该类已声明方法名集合（来自 RouteTable）
+     * @param routeTable 路由表（配置中心/插件组合数据源）
      * @return 监听器（可读插桩计数）
      */
     public static InstrumentationListener register(Instrumentation inst, Logger log,
-                                                   Map<String, Set<String>> targets) {
+                                                   RouteTable routeTable) {
         InstrumentationListener listener = new InstrumentationListener(log);
 
         AgentBuilder builder = new AgentBuilder.Default()
@@ -67,20 +70,22 @@ public final class InstrumentationRegistrar {
                         .or(ElementMatchers.nameStartsWith("jdk."))
                         .or(ElementMatchers.nameStartsWith("org.pf4j"))
                         .or(ElementMatchers.nameStartsWith("net.bytebuddy"))
-                        .or(ElementMatchers.nameStartsWith("com.google.gson")));
-
-        for (Map.Entry<String, Set<String>> entry : targets.entrySet()) {
-            final String className = entry.getKey();
-            final ElementMatcher.Junction<MethodDescription> declaredNames =
-                    declaredMethodNames(entry.getValue());
-            builder = builder
-                    .type(ElementMatchers.named(className))
-                    .transform((DynamicType.Builder<?> b, TypeDescription type,
-                                ClassLoader classLoader, JavaModule module) ->
-                            b.visit(adviceByReturnType(declaredNames)));
-        }
+                        .or(ElementMatchers.nameStartsWith("com.google.gson")))
+                // 类型匹配动态查询 RouteTable：类加载事件发生时以最新 targetClasses 判定
+                .type(new ElementMatcher<TypeDescription>() {
+                    @Override
+                    public boolean matches(TypeDescription target) {
+                        return routeTable.targetClasses().contains(target.getName());
+                    }
+                })
+                // 方法匹配在 transform 时按该类最新 methodNames 判定
+                .transform((DynamicType.Builder<?> b, TypeDescription type,
+                            ClassLoader classLoader, JavaModule module) ->
+                        b.visit(adviceByReturnType(
+                                declaredMethodNames(routeTable.methodNames(type.getName())))));
         builder.installOn(inst);
-        log.info("instrumentation registered for " + targets.size() + " target class(es)");
+        log.info("instrumentation registered (dynamic RouteTable matcher, "
+                + routeTable.targetClasses().size() + " target class(es) at install time)");
         return listener;
     }
 

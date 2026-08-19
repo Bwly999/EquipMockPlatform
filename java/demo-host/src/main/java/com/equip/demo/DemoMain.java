@@ -27,10 +27,11 @@ public class DemoMain {
         }
     }
 
-    /** 一轮全量调用：输出行格式是 scripts/m1-verify.sh 的断言依据，不得随意变更 */
+    /** 一轮全量调用：输出行格式是 scripts/e2e-check.sh 的断言依据，不得随意变更 */
     private static void runOneRound(PowerDevice device) {
-        int status = device.readStatus(1, "CH1");
-        System.out.println("readStatus(1,CH1)=" + status);
+        callReadStatus(device, 1, "CH1");
+        // M2 验收辅助（03 §9 用例 2/3/4：FullMatch 不命中通道 + THROW 校验通道）
+        callReadStatus(device, 2, "CH2");
 
         System.out.println("isOnline()=" + PowerDevice.isOnline());
 
@@ -48,6 +49,20 @@ public class DemoMain {
         System.out.println("realSendCount=" + RealCallCounter.sendCount());
 
         System.out.println("unrelated=" + new UnrelatedService().hello());
+    }
+
+    /**
+     * 断言辅助（M2）：调用 readStatus 并打印；THROW Mock 命中时打印
+     * {@code readStatus(ch,name)=THROW:异常类:消息} 而非让异常终止演示循环。
+     * 正常路径输出与 M1 完全一致。
+     */
+    private static void callReadStatus(PowerDevice device, int channel, String name) {
+        try {
+            System.out.println("readStatus(" + channel + "," + name + ")="
+                    + device.readStatus(channel, name));
+        } catch (Throwable t) {
+            System.out.println("readStatus(" + channel + "," + name + ")=THROW:" + t);
+        }
     }
 
     /** byte[] 渲染为 [1,2,3] 形式；null 渲染为 null */
