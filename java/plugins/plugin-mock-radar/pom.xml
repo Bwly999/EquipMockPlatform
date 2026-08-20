@@ -13,6 +13,12 @@
   <artifactId>plugin-mock-radar</artifactId>
   <name>EquipMock 示例插件 B：雷达伺服 Mock</name>
 
+  <properties>
+    <!-- M4 自测试 argLine 约定（05 §4.1）：全部可用 -D 在命令行覆写 -->
+    <equipmock.agent.jar>${project.basedir}/../../equipmock-agent/target/equip-mock-agent.jar</equipmock.agent.jar>
+    <equipmock.bootstrap.jar>${project.basedir}/../../equipmock-bootstrap/target/equip-mock-bootstrap.jar</equipmock.bootstrap.jar>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.equipmock</groupId>
@@ -53,6 +59,72 @@
             </manifestEntries>
           </archive>
         </configuration>
+      </plugin>
+      <!-- 环境适配（非设计偏离）：离线仓库缺 surefire 2.22.2 的 junit-platform provider，模块内覆写 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.9.3</version>
+          </dependency>
+        </dependencies>
+        <!-- 单元测试（handler 纯逻辑）不挂 agent：*IT 才是进程内挂载的集成自测试 -->
+      </plugin>
+      <!-- M4 自测试（05 §4）：failsafe 在 integration-test 阶段执行 *IT（本模块 jar 已打包）。
+           与 plugin-mock-cabinet 相同约定：forkCount=1 + reuseForks=false →
+           每测试类独占 JVM/agent/home(fN)。 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>3.2.5</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.9.3</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <forkCount>1</forkCount>
+          <reuseForks>false</reuseForks>
+          <argLine>-javaagent:${equipmock.agent.jar} -Dequipmock.bootstrap.jar=${equipmock.bootstrap.jar} -Dequipmock.home=${project.build.directory}/equipmock-test-home/f${surefire.forkNumber} -Dequipmock.test.plugin.jar=${project.build.directory}/mock-radar-${project.version}.jar</argLine>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- 每次构建前清掉上一轮的测试 home（避免 stale registry 在 premain 提前加载插件，
+           锁住 jar 使 @BeforeAll 清理失败——Windows 文件占用） -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.2.0</version>
+        <executions>
+          <execution>
+            <id>clean-test-home</id>
+            <phase>pre-integration-test</phase>
+            <goals>
+              <goal>clean</goal>
+            </goals>
+            <configuration>
+              <excludeDefaultDirectories>true</excludeDefaultDirectories>
+              <filesets>
+                <fileset>
+                  <directory>${project.build.directory}/equipmock-test-home</directory>
+                </fileset>
+              </filesets>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

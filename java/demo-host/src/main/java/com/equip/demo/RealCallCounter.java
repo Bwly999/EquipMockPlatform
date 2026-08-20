@@ -10,6 +10,9 @@ public final class RealCallCounter {
     private static final AtomicInteger READ_STATUS = new AtomicInteger();
     private static final AtomicInteger POWER_ON = new AtomicInteger();
     private static final AtomicInteger SEND = new AtomicInteger();
+    // M4-3 增量：RadarServo 打点（不影响既有三个计数的行为）
+    private static final AtomicInteger GET_AZIMUTH = new AtomicInteger();
+    private static final AtomicInteger TRACK = new AtomicInteger();
 
     private RealCallCounter() {
     }
@@ -29,6 +32,16 @@ public final class RealCallCounter {
         return SEND.get();
     }
 
+    /** 真实 getAzimuth 执行次数（M4-3，RadarServo） */
+    public static int getAzimuthCount() {
+        return GET_AZIMUTH.get();
+    }
+
+    /** 真实 track 执行次数（M4-3，RadarServo） */
+    public static int trackCount() {
+        return TRACK.get();
+    }
+
     static void onReadStatus() {
         READ_STATUS.incrementAndGet();
     }
@@ -39,5 +52,13 @@ public final class RealCallCounter {
 
     static void onSend() {
         SEND.incrementAndGet();
+    }
+
+    static void onGetAzimuth() {
+        GET_AZIMUTH.incrementAndGet();
+    }
+
+    static void onTrack() {
+        TRACK.incrementAndGet();
     }
 }

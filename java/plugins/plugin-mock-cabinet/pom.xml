@@ -13,6 +13,14 @@
   <artifactId>plugin-mock-cabinet</artifactId>
   <name>EquipMock 示例插件 A：机柜电源 Mock</name>
 
+  <properties>
+    <!-- M4 自测试 argLine 约定（05 §4.1）：全部可用 -D 在命令行覆写。
+         agent/bootstrap 用模块相对路径缺省值——单模块 -am 构建不包含 agent 模块，
+         需先在根构建一次（或显式 -Dequipmock.agent.jar=...）。 -->
+    <equipmock.agent.jar>${project.basedir}/../../equipmock-agent/target/equip-mock-agent.jar</equipmock.agent.jar>
+    <equipmock.bootstrap.jar>${project.basedir}/../../equipmock-bootstrap/target/equip-mock-bootstrap.jar</equipmock.bootstrap.jar>
+  </properties>
+
   <dependencies>
     <!-- 插件关键依赖一律 provided：运行时由 agent jar 提供，不打进插件包 -->
     <dependency>
@@ -56,15 +64,73 @@
           </archive>
         </configuration>
       </plugin>
-      <!-- surefire argLine 挂 agent：见 05 §4.1，testkit 就绪后启用
+      <!-- 环境适配（非设计偏离）：离线仓库缺 surefire 2.22.2 的 junit-platform provider，模块内覆写 -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <configuration>
-          <argLine>-javaagent:${agent.jar} -Dequipmock.home=${project.build.directory}/equipmock-test-home</argLine>
-        </configuration>
+        <version>3.2.5</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.9.3</version>
+          </dependency>
+        </dependencies>
+        <!-- 单元测试（handler 纯逻辑）不挂 agent：*IT 才是进程内挂载的集成自测试 -->
       </plugin>
-      -->
+      <!-- M4 自测试（05 §4）：failsafe 在 integration-test 阶段执行 *IT——
+           此时本模块 target/mock-cabinet-*.jar 已打包（surefire test 阶段尚不存在，
+           无法 registerPlugin 自己），argLine 挂 agent + 指定 per-fork home。
+           forkCount=1 + reuseForks=false：每个测试类独占一个 JVM/agent/home(fN)。 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>3.2.5</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.9.3</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <forkCount>1</forkCount>
+          <reuseForks>false</reuseForks>
+          <argLine>-javaagent:${equipmock.agent.jar} -Dequipmock.bootstrap.jar=${equipmock.bootstrap.jar} -Dequipmock.home=${project.build.directory}/equipmock-test-home/f${surefire.forkNumber} -Dequipmock.test.plugin.jar=${project.build.directory}/mock-cabinet-${project.version}.jar</argLine>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- 每次构建前清掉上一轮的测试 home（04 §1 骨架由 agent premain/testkit 重建；
+           JVM 内不删目录——agent 正在 watch，删后重建会引发 lastError 假阳性） -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.2.0</version>
+        <executions>
+          <execution>
+            <id>clean-test-home</id>
+            <phase>pre-integration-test</phase>
+            <goals>
+              <goal>clean</goal>
+            </goals>
+            <configuration>
+              <excludeDefaultDirectories>true</excludeDefaultDirectories>
+              <filesets>
+                <fileset>
+                  <directory>${project.build.directory}/equipmock-test-home</directory>
+                </fileset>
+              </filesets>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
 </project>
