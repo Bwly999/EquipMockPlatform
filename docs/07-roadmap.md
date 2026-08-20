@@ -73,7 +73,7 @@ M1 完成后 M2/M5 可并行；M3 依赖 M2（配置路由）；M6 依赖 M3/M4�
 
 | 任务 | 内容 | 验收 |
 | --- | --- | --- |
-| M4-1 | equipmock-testkit：EquipMockTestBase + 原子写/awaitConfigApplied/enableMock + surefire argLine 模板（05 §4） | agent 模块自身用它写集成测试 |
+| M4-1 | equipmock-testkit：EquipMockTestBase + 原子写/awaitConfigApplied/enableMock + **failsafe**（IT 阶段，jar 打包后）argLine 模板（05 §4） | agent 模块自身用它写集成测试 |
 | M4-2 | plugin-mock-cabinet：PowerDevice 全方法 handler（null 落配置为主 + 1 个写死用例）+ 自测试（含 05 §4.3 两条用例） | `mvn test` 单模块自测通过（init.md：每模块可自测试） |
 | M4-3 | plugin-mock-radar：第二个插件（不同目标类 + PATTERN_MATCH 场景 + THROW）+ 自测试 | 同上 |
 | M4-4 | 端到端脚本固化：`scripts/e2e-check.ps1` 拉起 demo-host 断言输出（M2 十条 + M3 全循环） | 一条命令全绿 |
@@ -100,7 +100,7 @@ M1 完成后 M2/M5 可并行；M3 依赖 M2（配置路由）；M6 依赖 M3/M4�
 
 | 任务 | 内容 | 验收 |
 | --- | --- | --- |
-| M7-1 | Java 侧发布 zip：assembly 定名（equip-mock-agent/bootstrap.jar）+ 骨架 + `README-接入.md`（-javaagent/-Dequipmock.home/插件放置说明） | 干净目录解压即用 |
+| M7-1 | Java 侧发布 zip：`scripts/make-release.sh` 从各模块 target 组装（equip-mock-agent/bootstrap.jar 定名 + 示例插件×2 + plugin-registry 预登记 + default 组示例配置 + demo-host 示例宿主 + testkit dev 包）+ `README-接入.md`（-javaagent/-Dequipmock.home/插件放置/自测试工作流说明） | 干净目录解压即用 |
 | M7-2 | 工作台 electron-builder：NSIS+portable、版本同步脚本（06 §9） | 两种安装形态可用 |
 | M7-3 | 端到端回归：e2e-check + 工作台手测清单（M5-1/M6 各验收项合并成 checklist） | 全绿并归档结果 |
 | M7-4 | 文档收尾：schemas 与实现一致性复查、决策记录补新 ADR | docs 与实现无漂移 |

@@ -227,12 +227,12 @@ Plugin-Description: 机柜电源硬件 Mock
 Plugin-Provider: xxx
 ```
 
-agent 侧校验：解析 `Plugin-Requires`，用 PF4J `VersionManager` 比对平台版本；不满足 → 拒绝加载，state.json.plugins[].state=REJECTED，error 写明"requires equipmock>=x.y.z, current=a.b.c"。
+agent 侧校验：解析 `Plugin-Requires`，与平台版本比较（**自写数字段比较，仅比 major.minor.patch、限定符不参与**——pf4j VersionManager 无法解析产品名前缀与空格 AND 多条件，且 semver 预发布语义会令 SNAPSHOT 平台版本永不满足）；不满足或**缺失该字段** → 拒绝加载（fail-closed），state.json.plugins[].state=REJECTED，error 写明"requires equipmock>=x.y.z, current=a.b.c"。同时覆写 PF4J `isPluginValid()=true` 短路其内置"requires→pf4j 运行时版本"校验。
 
 ### 6.2 生命周期与清单驱动
 
 - `DefaultPluginManager(pluginsDir)`；**只加载 plugin-registry.json 中登记的 jar**（自定义 PluginLoader：先查清单，未登记的文件跳过）。清单与 jar 不一致（登记了但文件缺失）：state 标 MISSING，启动不中断。
-- registry 中 `enabled=false` 的插件：仍 `loadPlugin + resolve`（类已加载、MockPoint 注册），但 `MockPoint.pluginEnabled=false`（D8：全量插桩 + 路由开关）。启动即停用的类同样织入 advice，运行期只查标志位。
+- registry 中 `enabled=false` 的插件：仍执行 pf4j load+start（`AbstractExtensionFinder` 要求 STARTED 才返回扩展，javap 反汇编确认），MockPoint 全量注册、插桩照常，仅 `MockPoint.pluginEnabled=false`（D8：全量插桩 + 路由开关）。state 标 `RESOLVED`（导入即停用）/`DISABLED`（运行中改停用），两状态由此获得明确含义。**扩展发现依赖插件 jar 内 `META-INF/extensions.idx`**（由 pf4j 注解处理器在插件编译期自动生成；手工打 jar 时需自带）。
 - **运行期导入新插件**（监听 plugin-registry.json 变更，D9）：
   1. `loadPlugin/startPlugin`，注册 MockPoint，重建路由表；
   2. 对已在 JVM 中加载的目标类：`inst.retransformClasses(...)` 逐个补插桩（AgentBuilder 的 RETRANSFORM 策略复用同一 transformer 即可）；

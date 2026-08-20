@@ -50,7 +50,7 @@ describe('SubGroupDoc 与 schema 同源锁定', () => {
   it('schema 的结构关键点（锁定 additionalProperties:false 与必填）', () => {
     // 类型系统不允许的字段，schema 也不允许
     expect(validate({ name: 'x', mocks: [], unknownField: 1 })).toBe(false)
-    expect(validate({ mocks: [] })).toBe(false) // 缺 name
+    expect(validate({ mocks: [] })).toBe(true) // 缺 name 合法（契约：缺省=文件名）
     expect(validate({ name: 'x' })).toBe(false) // 缺 mocks
     // matchType 二选一必带对应字段
     expect(validate({ name: 'x', mocks: [{ class: 'a', method: 'b', enabled: true, rules: [{ matchType: 'FULL_MATCH', action: { type: 'VOID' } }] }] })).toBe(false)

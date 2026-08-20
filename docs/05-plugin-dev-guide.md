@@ -93,16 +93,21 @@ public abstract class EquipMockTestBase {
 }
 ```
 
-surefire 配置（插件模块 pom 统一由 testkit 文档提供模板）：
+自测试用 **failsafe（integration-test 阶段）**而非 surefire——插件自测必须 `registerPlugin` 本模块已打包的 jar，而 surefire test 阶段 jar 尚未生成；handler 纯逻辑单测仍走 surefire（不挂 agent）。两个插件模块的 pom 是该模式的模板：
 
 ```xml
+<!-- failsafe: forkCount=1, reuseForks=false, 每测试类独立 JVM/home -->
 <argLine>
-  -javaagent:${agent.jar.path}
-  -Dequipmock.home=${project.build.directory}/equipmock-test-home
+  -javaagent:${equipmock.agent.jar}
+  -Dequipmock.bootstrap.jar=${equipmock.bootstrap.jar}
+  -Dequipmock.home=${project.build.directory}/equipmock-test-home/f${surefire.forkNumber}
 </argLine>
 ```
 
-注意：argLine 在 JVM 启动时注入 → `equipmock.home` 指向测试目录；测试内改 json 走与工作台相同的原子写协议，用 `awaitConfigApplied` 等 agent 重载完成再断言（通常 <1.5s）。
+关键事实（M3/M4 实测）：
+- `META-INF/extensions.idx` 由 pf4j 3.12 自带的注解处理器在插件编译期自动生成（provided 依赖即可），无需手工维护。
+- premain 时 registry 尚不存在（测试代码后跑）——依赖 agent 热导入在测试中生效：`registerPlugin` 后轮询 `state.plugins[].state==STARTED`。
+- 测试与插件 handler 分属不同类加载器，静态标志不共享：跨加载器开关用系统属性（如 cabinet 的 `mock.cabinet.busy`）。
 
 ### 4.2 测试分层
 

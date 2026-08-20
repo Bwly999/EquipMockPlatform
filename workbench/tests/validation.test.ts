@@ -48,11 +48,6 @@ describe('validateSubGroupDoc 正例', () => {
 describe('validateSubGroupDoc 反例（Schema 层）', () => {
   const cases: { name: string; mutate: (d: SubGroupDoc) => void; path: string }[] = [
     {
-      name: '缺 name',
-      mutate: (d) => delete (d as Partial<SubGroupDoc>).name,
-      path: '',
-    },
-    {
       name: 'mock 缺 method',
       mutate: (d) => delete (d.mocks[0] as unknown as Record<string, unknown>).method,
       path: 'mocks[0]',

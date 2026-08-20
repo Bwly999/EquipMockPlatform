@@ -54,6 +54,20 @@
 | D18 | 发布 | Agent 侧 zip；工作台 electron-builder NSIS + 便携 zip | 覆盖内网分发与便携两种场景 |
 | D19 | API 兼容 | 插件 descriptor 声明平台版本要求，agent **硬校验拒绝**并写 state.json | 避免"加载了但行为诡异" |
 
+## 实施修订记录（实现期间对设计的修正，均已回写对应文档）
+
+| 修正 | 涉及文档 | 原因 |
+| --- | --- | --- |
+| advice 采用两段式 enter+exit（skipOn 返回值不回传） | 02 §4 | byte-buddy 1.9.16 实测（javap 验证） |
+| PF4J shade 合并但不 relocate | 02 §7 | 扩展点契约需与插件编译期同包名 |
+| JUL 滚动日志文件名带代号 agent.log.0–.4 | 04 §1、06 §7 | FileHandler count>1 强制编号 |
+| state.json 增加 groupFiles、小分组 name 可缺省 | 04 §3/§6 + schemas | M2 反馈的契约内部矛盾 |
+| 插件自测试走 failsafe（IT 阶段）而非 surefire | 05 §4、07 M4-1 | test 阶段插件 jar 尚未打包 |
+| extensions.idx 由 pf4j 注解处理器自动生成 | 02 §6.2、05 §4 | PF4J 3.12 无 classgraph |
+| 缺 Plugin-Requires → REJECTED；版本比较自写（仅比三段数字） | 02 §6.1 | fail-closed + VersionManager 能力限制 |
+| enabled=false 仍 startPlugin（RESOLVED/DISABLED 两态语义） | 02 §6.2 | AbstractExtensionFinder 要求 STARTED |
+| Java 发布 zip 由 scripts/make-release.sh 组装 | 07 M7-1 | 免引入 assembly 插件，产物一致 |
+
 ## 术语表
 
 - **宿主应用**：被 Mock 的装备软件（普通 Java SE 程序）。
